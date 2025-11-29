@@ -1,25 +1,42 @@
-# Datei aus Datenbank runterladen
+# Link-Verarbeitung mit Ollama (C++)
 
-Dieses Repository enthält ein kleines Python-Skript, das in einer XAMPP-Umgebung regelmäßig eine Textdatei mit Download-Links prüft, neue Einträge erkennt und die zugehörigen Dateien automatisch herunterlädt. Bereits verarbeitete Links werden in einer separaten Datei protokolliert, sodass derselbe Download nicht mehrfach durchgeführt wird.
+Dieses Programm liest eine Link-Liste zeilenweise ein, lädt jede Webseite herunter, übergibt den bereinigten Inhalt an Ollama (z. B. `deepseek-r1:7b`) und speichert alle Ergebnisse nachvollziehbar in JSON- sowie Text-Dateien. Der Fortschritt wird in einer separaten Datei abgelegt, sodass das Programm nach einem Neustart fortfahren kann. Alle Schritte sind in kleine, wiederverwendbare Unterprogramme aufgeteilt.
 
-## Konfiguration
-- `SOURCE_LINK_FILE`: Pfad zur Textdatei mit den Links (z. B. `C:\xampp\htdocs\links\links.txt`).
-- `PROCESSED_LINKS_FILE`: Pfad zur Datei, in der verarbeitete Links gespeichert werden (z. B. `C:\xampp\htdocs\links\processed_links.txt`).
-- `DOWNLOAD_DIR`: Zielordner für die heruntergeladenen Dateien (z. B. `C:\xampp\htdocs\downloads`).
-- `INTERVAL_SECONDS`: Wartezeit zwischen den Durchläufen (Standard: 900 Sekunden = 15 Minuten).
+## Voraussetzungen
+- Linux mit g++ (C++17)
+- `libcurl` (z. B. Paket `libcurl4-openssl-dev`)
+- Ollama mit installiertem Modell `deepseek-r1:7b` (GPU-Nutzung entsprechend deiner Ollama-Konfiguration)
 
-Passe die Pfade im Skript `download_links.py` an deine Umgebung an. Die Dateien werden automatisch angelegt, falls sie nicht existieren, und der Zielordner wird bei Bedarf erstellt.
+## Dateien
+- `links.txt`: Eine URL pro Zeile. Die Datei kann nummerierte oder reine URL-Zeilen enthalten.
+- `prompts.txt`: Eine Aufgabe pro Zeile; jede Zeile wird als eigener Prompt an Ollama geschickt.
+- `progress.txt`: Wird automatisch im gleichen Ordner angelegt und speichert die zuletzt verarbeitete Zeilennummer (0-basiert).
+- `result.txt`: Wird automatisch im gleichen Ordner angelegt und sammelt alle Ollama-Antworten in chronologischer Reihenfolge.
+- `link_<nr>.json`: Pro Link eine JSON-Datei mit Seiteninhalt und allen Prompt-Ergebnissen.
+
+## Kompilieren
+```bash
+g++ -std=c++17 main.cpp -lcurl -o link_processor
+```
 
 ## Nutzung
-1. Stelle sicher, dass Python 3 installiert ist.
-2. Passe die oben genannten Konstanten in `download_links.py` an.
-3. Starte das Skript:
+1. Passe (oder erstelle) `links.txt` und `prompts.txt` im selben Ordner an.
+2. Starte das Programm wahlweise mit einem expliziten Pfad zur Link-Datei:
    ```bash
-   python download_links.py
+   ./link_processor /pfad/zu/links.txt
    ```
-4. Das Skript läuft in einer Endlosschleife und prüft die Link-Datei alle 15 Minuten. Zum Beenden kannst du den Prozess mit `Strg+C` abbrechen.
+   Ohne Argument wird automatisch `links.txt` im aktuellen Ordner genutzt. Die übrigen Dateien (`prompts.txt`, `progress.txt`, `result.txt`) werden im gleichen Ordner erwartet bzw. angelegt.
+3. Ablauf pro Link:
+   - Webseite laden (Bilder etc. werden ignoriert, der reine Text wird extrahiert).
+   - Inhalt in `link_<nr>.json` speichern.
+   - Jeden Prompt aus `prompts.txt` mit Kontext an Ollama senden.
+   - Terminalausgabe: `Prompt`, `OLLAMA denken`, `Ergebnis`.
+   - Ergebnisse in `result.txt` und in die JSON-Datei anhängen.
+   - Bei fehlender Seite wird „Webseite nicht vorhanden“ ausgegeben und protokolliert.
+4. Polling: Wenn alle Links verarbeitet sind, wartet das Programm 15 Minuten und prüft dann erneut, ob neue Links hinzugekommen sind.
 
 ## Hinweise
-- Pro Zeile der Link-Datei wird genau eine URL erwartet. Leere Zeilen werden ignoriert.
-- Wenn die Link-Datei in der XAMPP-Weboberfläche aktualisiert oder ersetzt wird, erkennt das Skript die neuen Links automatisch beim nächsten Durchlauf.
-- Sind Dateien mit gleichem Namen bereits im Download-Ordner vorhanden, wird ein Zeitstempel angefügt, um Überschreibungen zu vermeiden.
+- Der Fortschritt wird nach jedem Link gespeichert (`progress.txt`), sodass ein Neustart fortsetzt, ohne bereits erledigte Links zu duplizieren.
+- `result.txt` erhält nach jedem Link zwei Leerzeilen, damit die Abschnitte klar getrennt bleiben.
+- Die JSON-Dateien werden bei jedem Prompt-Schritt vollständig neu geschrieben, damit alle bisherigen Ergebnisse erhalten bleiben.
+- Soll ein anderes Modell genutzt werden, passe `model_name` in `Config` (in `main.cpp`) an oder erweitere die Argument-Logik entsprechend.
